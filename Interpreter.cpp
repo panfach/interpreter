@@ -349,3 +349,6 @@ int main(int argc, char* argv[]) {
 
 	cout << "\n// =========== Interpreter has done! ========== //\n";
 }
+
+
+// Привет
