@@ -2,9 +2,11 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <stack>
 using namespace std;
 
 
+// ============================ ENUM & STRUCT ========================== //
 enum type_of_lex {
 	LEX_NULL,    // 0
 	LEX_BOOL,    // 1
@@ -97,7 +99,7 @@ public:
 	/* friend ostream& operator << (ostream& stream, Lex L) */
 };
 
-// ================================ IDENT ================================ //
+// =================================== IDENT =================================== //
 class Ident {
 
 	string name;
@@ -123,12 +125,12 @@ public:
 	void put_value(int v) { value = v; }
 };
 
-// ================================ ÒÀÁËÈÖÛ ================================ //
+// ================================ TABLES ================================= //
 vector<string> TS;
 vector<Ident> TID;
 vector<Lex> TT;
 
-// ================================ SCANNER ================================ //
+// =================================== SCANNER =================================== //
 class Scanner {
 	FILE* f;
 	char inpCh;
@@ -160,8 +162,45 @@ vector<string> Scanner::TW = { "null", "bool", "int", "string", "and", "or", "be
 vector<string> Scanner::TD = { "null", ";", ",", ":", ":=", "(", ")", "=", "<", ">",
 							   "+", "-", "*", "/", "<=", ">=", "!=", "==", "{", "}", ".", "\"" };
 
-// ========================================================================== //
+// ================================ PARSER ================================== //
+class Parser {
+	Lex curr_lex;
+	type_of_lex curr_type;
+	int curr_val;
+	Scanner scanner;
+	stack<int>st_int;
+	stack<type_of_lex>st_lex;
 
+	void P();
+	void D1();
+	void D();
+	void B();
+	void S();
+	void E();
+	void E1();
+	void T();
+	void F();
+
+	void Dec(type_of_lex type);
+	void CheckID();
+	void CheckOP();
+	void CheckNot();
+	void EqType();
+	void EqBool();
+	void CheckID_read();
+	void GetL() {
+		curr_lex = scanner.GetLex();
+		curr_type = curr_lex.get_type();
+		curr_val = curr_lex.get_value();
+	}
+
+public:
+	vector<Lex> poliz;
+	Parser(const char* program) : scanner(program) { }
+	void KowalskiAnalyze();
+};
+
+// =========================== DESCRIPTIONS I ========================= //
 ostream& operator << (ostream& stream, Lex L) {
 	string lexName;
 	if (L.get_type() > LEX_NULL && L.get_type() < LEX_FIN)
@@ -278,6 +317,15 @@ Lex Scanner::GetLex() {
 	}
 }
 
+// ======================= PARSER FUNCTION DESCRIPTIONS ===================== //
+
+
+
+
+
+
+// ========================================================================== //
+
 void PrintError(my_exception& exc) {
 	switch (exc.type) {
 	case ERR_STD:
@@ -349,6 +397,3 @@ int main(int argc, char* argv[]) {
 
 	cout << "\n// =========== Interpreter has done! ========== //\n";
 }
-
-
-// Ïðèâåò
