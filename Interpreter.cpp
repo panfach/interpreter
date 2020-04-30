@@ -1,4 +1,4 @@
-#define _CRT_SECURE_NO_WARNINGS
+﻿#define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include <string>
 #include <vector>
@@ -70,7 +70,9 @@ enum type_of_err {
 	ERR_STD,
 	ERR_CHAR,
 	ERR_COM,
-	ERR_STR
+	ERR_STR,
+	ERR_END,
+	ERR_LEX
 };
 
 struct my_exception {
@@ -156,13 +158,39 @@ public:
 	}
 };
 
-vector<string> Scanner::TW = { "null", "bool", "int", "string", "and", "or", "begin", "do",
+vector<string> Scanner::TW = { "null", "boolean", "int", "string", "and", "or", "begin", "do",
 							   "end", "true", "false", "if", "else", "for", "while", "break",
 							   "goto", "not", "program", "read", "write", "then", "var", "struct" };
 vector<string> Scanner::TD = { "null", ";", ",", ":", ":=", "(", ")", "=", "<", ">",
 							   "+", "-", "*", "/", "<=", ">=", "!=", "==", "{", "}", ".", "\"" };
 
 // ================================ PARSER ================================== //
+/*
+〈программа〉 → program _{ 〈описания〉 〈операторы〉 }_
+〈описания〉 → { 〈описание〉; }
+〈описание〉 → 〈тип〉 〈переменная〉 { , 〈переменная〉 }
+〈тип〉 → int | string
+〈переменная〉 → 〈идентификатор〉 | 〈идентификатор〉 = 〈константа〉 
+〈константа〉 → 〈целочисленная〉 | 〈строковая〉
+〈целочисленная〉 → [〈знак〉] 〈цифра〉 { 〈цифра〉 }
+〈знак〉 → + | −
+〈строковая〉 → " { 〈литера〉 } "
+〈операторы〉 → { 〈оператор〉 }
+〈оператор〉 →
+	if (<выражение>) <оператор> else <оператор>
+	| for ([выражение]; [выражение]; [выражение]) <оператор>
+	| while (<выражение>) <оператор>
+	| break;
+	| goto <идентификатор> ;
+	| read (<идентификатор>);
+	| write (<выражение> { ,<выражение> } );
+	| <составной оператор>
+	| <помеченный оператор>
+	| <оператор-выражение>
+<помеченный оператор> → <идентификатор>: <оператор> ???
+〈составной оператор〉 → _{ 〈операторы〉 }_
+〈оператор-выражение〉 → 〈выражение〉;
+*/
 class Parser {
 	Lex curr_lex;
 	type_of_lex curr_type;
@@ -171,25 +199,32 @@ class Parser {
 	stack<int>st_int;
 	stack<type_of_lex>st_lex;
 
-	void P();
-	void D1();
-	void D();
-	void B();
-	void S();
-	void E();
-	void E1();
-	void T();
-	void F();
+	void P();  // Program 
+	void D();  // Descriptions
+	void D1(); // Description
+	void V();  // Variables
+	void V1(); // Variable
+	void C0(); // Integer const
+	void S();  // Struct
+	void O();  // Operators
+	void O1(); // Operator
+	void E0(); // Boolean expression
+	void E();  // Expression
+	void E1(); // Term
+	void A0(); // Boolean operations
+	void A();  // Operations
+	void O2(); // Compound operator
 
-	void Dec(type_of_lex type);
-	void CheckID();
-	void CheckOP();
-	void CheckNot();
-	void EqType();
-	void EqBool();
-	void CheckID_read();
+	//void Dec(type_of_lex type);
+	//void CheckID();
+	//void CheckOP();
+	//void CheckNot();
+	//void EqType();
+	//void EqBool();
+	//void CheckID_read();
 	void GetL() {
 		curr_lex = scanner.GetLex();
+		poliz.push_back(curr_lex);
 		curr_type = curr_lex.get_type();
 		curr_val = curr_lex.get_value();
 	}
@@ -197,7 +232,7 @@ class Parser {
 public:
 	vector<Lex> poliz;
 	Parser(const char* program) : scanner(program) { }
-	void KowalskiAnalyze();
+	void Analyze();
 };
 
 // =========================== DESCRIPTIONS I ========================= //
@@ -290,6 +325,7 @@ Lex Scanner::GetLex() {
 				return Lex((type_of_lex)(j + LEX_NULL2), j);
 			}
 			else {
+				ungetc(inpCh, f);
 				if (j = look(buf, TD))
 					return Lex((type_of_lex)(j + LEX_NULL2), j);
 				else throw my_exception(ERR_CHAR, inpCh);
@@ -318,14 +354,219 @@ Lex Scanner::GetLex() {
 }
 
 // ======================= PARSER FUNCTION DESCRIPTIONS ===================== //
+void Parser::Analyze() {
+	GetL();
+	P();
+	if (curr_type != LEX_FIN) throw my_exception(ERR_END);
+	for (Lex l : poliz) cout << l << endl;
+	cout << endl << "Structure of program is correct \n" << endl;
+}
 
+void Parser::P() {
+	if (curr_type == LEX_PROGRAM) GetL();
+	else throw curr_lex;
+	if (curr_type == LEX_OBRACE) GetL();
+	else throw curr_lex;
+	D();
+	O();
+	if (curr_type == LEX_CBRACE) GetL();
+	else throw curr_lex;
+}
 
+void Parser::D() {  // Descriptions
+	if (curr_type == LEX_INT || curr_type == LEX_STRING || curr_type == LEX_BOOL || curr_type == LEX_STRUCT) {
+		D1();
+		if (curr_type == LEX_SEMICOLON) GetL();
+		else throw curr_lex;
+		D();
+	}
+}
 
+void Parser::D1() { // Description
+	if (curr_type == LEX_INT || curr_type == LEX_STRING || curr_type == LEX_BOOL) {
+		GetL();
+		V();
+	}
+	else if (curr_type == LEX_STRUCT) {
+		GetL();
+		S();
+	}
+	else throw my_exception(ERR_STD, "Error.");
+}
 
+void Parser::V() {  // Variables
+	V1();
+	if (curr_type == LEX_COMMA) {
+		GetL();
+		V();
+	}
+}
 
+void Parser::V1() { // Variable
+	if (curr_type != LEX_ID) throw curr_lex;
+	GetL();
+	if (curr_type == LEX_EQ) {
+		GetL();
+		if (curr_type == LEX_CSTR) GetL();
+		else C0();
+	}
+}
+
+void Parser::C0() { // Integer const
+	if (curr_type == LEX_PLUS || curr_type == LEX_MINUS) GetL();
+	if (curr_type == LEX_NUM) GetL();
+	else throw curr_lex;
+}
+
+void Parser::S() {  // Struct
+	if (curr_type != LEX_OBRACE) throw curr_lex;
+	GetL();
+	D();
+	if (curr_type != LEX_CBRACE) throw curr_lex;
+	GetL();
+}
+
+void Parser::O() {  // Operators
+	if (curr_type != LEX_CBRACE) {
+		O1();
+		O();
+	}
+}
+
+void Parser::O1() { // Operator
+	if (curr_type == LEX_IF) {
+		GetL();
+		if (curr_type != LEX_OBRACKET) throw curr_lex;
+		E0();
+		if (curr_type != LEX_CBRACKET) throw curr_lex;
+		O1();
+		if (curr_type == LEX_ELSE) {
+			GetL();
+			O1();
+		}
+	}
+	else if (curr_type == LEX_FOR) {
+		GetL();
+		if (curr_type != LEX_OBRACKET) throw curr_lex;
+		GetL();
+		if (curr_type != LEX_SEMICOLON) E();
+		if (curr_type != LEX_SEMICOLON) throw curr_lex;
+		GetL();
+		if (curr_type != LEX_SEMICOLON) E0();
+		if (curr_type != LEX_SEMICOLON) throw curr_lex;
+		GetL();
+		if (curr_type != LEX_CBRACKET) E();
+		if (curr_type != LEX_CBRACKET) throw curr_lex;
+		GetL();
+		O1();
+	}
+	else if (curr_type == LEX_WHILE) {
+		GetL();
+		if (curr_type != LEX_OBRACKET) throw curr_lex;
+		GetL();
+		E0();
+		if (curr_type != LEX_CBRACKET) throw curr_lex;
+		GetL();
+		O1();
+	}
+	else if (curr_type == LEX_BREAK) {
+		GetL();
+	}
+	else if (curr_type == LEX_GOTO) {
+		GetL();
+		if (curr_type != LEX_ID) throw curr_lex;
+	}
+	else if (curr_type == LEX_READ) {
+		GetL();
+		if (curr_type != LEX_OBRACKET) throw curr_lex;
+		GetL();
+		if (curr_type != LEX_ID) throw curr_lex;
+		GetL();
+		if (curr_type != LEX_CBRACKET) throw curr_lex;
+		GetL();
+		if (curr_type != LEX_SEMICOLON) throw curr_lex;
+		GetL();
+	}
+	else if (curr_type == LEX_WRITE) {
+		GetL();
+		if (curr_type != LEX_SEMICOLON) throw curr_lex;
+		GetL();
+	}
+	else if (curr_type == LEX_OBRACE) {
+		O2();
+	}
+	else if (curr_type == LEX_OBRACKET || curr_type == LEX_ID || curr_type == LEX_NUM || curr_type == LEX_CSTR) {
+		E();
+		if (curr_type != LEX_SEMICOLON) throw curr_lex;
+		GetL();
+	}
+	else throw curr_lex;
+}
+
+void Parser::E0() { // Boolean expression
+	if (curr_type == LEX_NOT) {
+		GetL();
+		if (curr_type != LEX_ID) throw curr_lex;
+		GetL();
+	}
+	if (curr_type != LEX_ID) throw curr_lex;
+	GetL();
+	if (curr_type != LEX_CBRACKET && curr_type != LEX_SEMICOLON) {
+		A0();
+		if (curr_type == LEX_ID) GetL();
+		else C0();
+	}
+}
+
+void Parser::E() {  // Expression
+	if (curr_type == LEX_OBRACKET) {
+		GetL();
+		E1();
+		if (curr_type == LEX_CBRACKET);
+		else {
+			A();
+			E();
+		}
+		if (curr_type != LEX_CBRACKET) throw curr_lex;
+		GetL();
+	}
+	else {
+		E1();
+		if (curr_type != LEX_EQ && curr_type != LEX_PLUS && curr_type != LEX_MINUS && curr_type != LEX_STAR &&
+			curr_type != LEX_SLASH && curr_type != LEX_POINT);
+		else {
+			A();
+			E();
+		}
+	}
+}
+
+void Parser::E1() { // Term
+	if (curr_type == LEX_ID || curr_type == LEX_CSTR) GetL();
+	else C0();
+}
+
+void Parser::A0() { // Boolean operations
+	if (curr_type == LEX_LESS || curr_type == LEX_MORE || curr_type == LEX_LESSEQ || curr_type == LEX_MOREEQ ||
+		curr_type == LEX_EQEQ || curr_type == LEX_NEQ) GetL();
+	else throw curr_lex;
+}
+
+void Parser::A() {  // Operations
+	if (curr_type == LEX_EQ || curr_type == LEX_PLUS || curr_type == LEX_MINUS || curr_type == LEX_STAR ||
+		curr_type == LEX_SLASH || curr_type == LEX_POINT) GetL();
+	else throw curr_lex;
+}
+
+void Parser::O2() { // Compound operator
+	if (curr_type != LEX_OBRACE) throw curr_lex;
+	GetL();
+	O();
+	if (curr_type != LEX_CBRACE) throw curr_lex;
+	GetL();
+}
 
 // ========================================================================== //
-
 void PrintError(my_exception& exc) {
 	switch (exc.type) {
 	case ERR_STD:
@@ -338,7 +579,10 @@ void PrintError(my_exception& exc) {
 		cout << "Error. Comment contains '" << exc.text << "' or other forbidden symbol.\n";
 		break;
 	case ERR_STR:
-		cout << "Error. Closing quote of string was not found.";
+		cout << "Error. Closing quote of string was not found.\n";
+		break;
+	case ERR_END:
+		cout << "Error. There isn't end symbol.\n";
 		break;
 	}
 	cout << "\n// ================= ERROR!!! ================ //\n";
@@ -372,26 +616,28 @@ void PrintLex() {
 }
 
 int main(int argc, char* argv[]) {
-	Scanner scanner("TextProg1.txt");
+	Parser parser("TextProg1.txt");
 	Lex lex;
 
 	cout << "// ========= Interpreter starts work! ========= //\n";
 
 	try {
-		while ((lex = scanner.GetLex()).get_type() != LEX_FIN) {
-			PutLex(lex);
-		}
+		parser.Analyze();
 	}
 	catch (my_exception exc) {
 		PrintError(exc); 
 		return 1;
 	}
 	catch (char c) {
-		cout << "Error: character " << c << '\n';
+		cout << "Error: character " << c << endl;
+		return 1;
+	}
+	catch (Lex l) {
+		cout << "Error. Invalid token: " << l << endl;
 		return 1;
 	}
 
-	PrintLex();
+	//PrintLex();
 	PrintIdent();
 	PrintString();
 
