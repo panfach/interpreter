@@ -1,0 +1,52 @@
+Analyze -> P @
+P -> program { D O }
+D -> D1 ; D | eps
+D1 -> int V | string V | boolean V | struct S
+V -> V1 , V | V1                                                   ////1
+V1 -> lex_ident | lex_ident = C0 | lex_ident = lex_string |        ////1
+      lex_ident = true | lex_ident = false
+C0 -> lex_number | + lex_number | - lex_number                     ////1
+S -> { D }
+O -> O1 O | eps
+O1 -> if ( E0 ) O1 | if ( E0 ) O1 else O1 |                        ////1
+      for ( E ; E0 ; E ) O1 |
+      while ( E0 ) O1 |
+      break ; |
+      goto lex_ident ; |
+      read ( lex_ident ) ; |
+      write ; |
+      O2 | E ;
+E0 -> lex_ident A0 lex_ident | lex_ident A0 C0 | not lex_ident | lex_ident   ////1
+E -> E1 A E | ( E1 A E ) | E1 | ( E1 )                                       ////1
+E1 -> lex_ident | C0 | lex_string | true | false                             ////C0
+A0 -> < | > | <= | >= | == | !=                                           
+A -> = | + | - | * | / | .
+O2 -> { O }
+
+Version 2:
+
+Analyze -> P @
+P -> program { D O }
+D -> D1 ; D | eps
+D1 -> int lex_ident V1 V | string lex_ident V1 V | boolean lex_ident V1 V | struct S
+V -> , V1 V | eps          ////                                      
+V1 -> = E | eps            ////
+C0 -> lex_number | + lex_number | - lex_number       
+S -> { D }
+O -> O1 O | eps
+O1 -> if ( E0 ) O1 I0 |                        
+      for ( E ; E0 ; E ) O1 |
+      while ( E0 ) O1 | 
+      break ; |
+      goto lex_ident ; |
+      read ( lex_ident ) ; |
+      write ; |
+      O2 | E ;
+E0 -> E | eps
+E -> E1 E2 | ( E1 E2 )                                     
+E2 -> A E | eps
+E1 -> lex_ident S1 | C0 | lex_string | true | false
+S1 -> . lex_ident S1 | eps
+A -> = | + | - | * | / | < | > | <= | >= | == | !=
+O2 -> { O }
+I0 -> else O1 | else 

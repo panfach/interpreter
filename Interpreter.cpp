@@ -92,11 +92,13 @@ struct my_exception {
 class Lex {
 	type_of_lex t_lex;
 	int v_lex;
+	int s_lex;
 
 public:
-	Lex(type_of_lex t = LEX_NULL, int v = 0) { t_lex = t; v_lex = v; }
+	Lex(int s = 0, type_of_lex t = LEX_NULL, int v = 0) { t_lex = t; v_lex = v; s_lex = s; }
 	type_of_lex get_type() const { return t_lex; }
 	int get_value() const { return v_lex; }
+	int get_str() const { return s_lex; }
 
 	/* friend ostream& operator << (ostream& stream, Lex L) */
 };
@@ -136,6 +138,7 @@ vector<Lex> TT;
 class Scanner {
 	FILE* f;
 	char inpCh;
+	int strCounter = 1;
 	int look(const string& buf, vector<string> list) {
 		int i = 0;
 		vector<string>::iterator it;
@@ -238,12 +241,20 @@ public:
 // =========================== DESCRIPTIONS I ========================= //
 ostream& operator << (ostream& stream, Lex L) {
 	string lexName;
-	if (L.get_type() > LEX_NULL && L.get_type() < LEX_FIN)
-		stream << "type_of_lex: " << Scanner::TW[L.get_type()] << ", ";
+	stream.width(3);
+	stream << L.get_str() << ": ";
+	if (L.get_type() == LEX_ID)
+		stream << "type: IDENT";
+	else if (L.get_type() == LEX_NUM)
+		stream << "type: NUMBER";
+	else if (L.get_type() == LEX_CSTR)
+		stream << "type: STRING";
+	else if (L.get_type() > LEX_NULL && L.get_type() < LEX_FIN)
+		stream << "type: " << Scanner::TW[L.get_type()];
 	else if (L.get_type() > LEX_NULL2 && L.get_type() < LEX_NUM)
-		stream << "type_of_lex: " << Scanner::TD[L.get_type() - LEX_NULL2] << ", ";
-	else stream << "type_of_lex: " << L.get_type() << ", ";
-	stream << "value: " << L.get_value();
+		stream << "type: " << Scanner::TD[L.get_type() - LEX_NULL2];
+	else stream << "type: " << L.get_type();
+	stream << "          val: " << L.get_value();
 	return stream;
 }
 
@@ -274,7 +285,9 @@ Lex Scanner::GetLex() {
 		gc();
 		switch (CS) {
 		case H:
-			if (inpCh == ' ' || inpCh == '\n' || inpCh == '\r' || inpCh == '\t');
+			if (inpCh == ' ' || inpCh == '\r' || inpCh == '\t');
+			else
+			if (inpCh == '\n') strCounter++;
 			else
 			if (isalpha(inpCh)) { buf.push_back(inpCh); CS = IDENT; }
 			else
@@ -284,15 +297,17 @@ Lex Scanner::GetLex() {
 			else
 			if (inpCh == '=' || inpCh == ':' || inpCh == '<' || inpCh == '>') { buf.push_back(inpCh); CS = ALE; }
 			else 
-			if (inpCh == '@') return Lex(LEX_FIN);
+			if (inpCh == '@') return Lex(strCounter, LEX_FIN);
 			else
 			if (inpCh == '!') { buf.push_back(inpCh); CS = NEQ; }
 			else
 			if (inpCh == '"') { CS = STR; }
+			else 
+			if (inpCh == EOF) throw my_exception(ERR_END);
 			else {
 				buf.push_back(inpCh);
 				if (j = look(buf, TD))
-					return Lex((type_of_lex)(j + LEX_NULL2), j);
+					return Lex(strCounter, (type_of_lex)(j + LEX_NULL2), j);
 				else
 					throw my_exception(ERR_CHAR, inpCh);
 			}
@@ -302,18 +317,19 @@ Lex Scanner::GetLex() {
 			else {
 				ungetc(inpCh, f);
 				if (j = look(buf, TW))
-					return Lex((type_of_lex)j, j);
+					return Lex(strCounter, (type_of_lex)j, j);
 				else {
 					j = PutIdent(buf);
-					return Lex(LEX_ID, j);
+					return Lex(strCounter, LEX_ID, j);
 				}
 			}
 			break;
 		case NUMB:
 			if (isdigit(inpCh)) { digit = digit * 10 + inpCh - '0'; }
-			else { ungetc(inpCh, f); return Lex(LEX_NUM, digit); }
+			else { ungetc(inpCh, f); return Lex(strCounter, LEX_NUM, digit); }
 			break;
 		case COM:
+			if (inpCh == '\n') strCounter++;
 			if (inpCh == '#') { CS = H; }
 			else
 			if (inpCh == '@') throw my_exception(ERR_COM, '@');
@@ -322,12 +338,12 @@ Lex Scanner::GetLex() {
 			if (inpCh == '=') {
 				buf.push_back(inpCh);
 				j = look(buf, TD);
-				return Lex((type_of_lex)(j + LEX_NULL2), j);
+				return Lex(strCounter, (type_of_lex)(j + LEX_NULL2), j);
 			}
 			else {
 				ungetc(inpCh, f);
 				if (j = look(buf, TD))
-					return Lex((type_of_lex)(j + LEX_NULL2), j);
+					return Lex(strCounter, (type_of_lex)(j + LEX_NULL2), j);
 				else throw my_exception(ERR_CHAR, inpCh);
 			}
 
@@ -337,7 +353,7 @@ Lex Scanner::GetLex() {
 			else
 			if (inpCh == '"') {
 				j = PutString(buf);
-				return Lex(LEX_CSTR, j);
+				return Lex(strCounter, LEX_CSTR, j);
 			}
 			else { buf.push_back(inpCh); }
 			break;
@@ -345,7 +361,7 @@ Lex Scanner::GetLex() {
 			if (inpCh == '=') {
 				buf.push_back(inpCh);
 				j = look(buf, TD);
-				return Lex(LEX_NEQ, j);
+				return Lex(strCounter, LEX_NEQ, j);
 			}
 			else throw '!';
 			break;
@@ -408,6 +424,7 @@ void Parser::V1() { // Variable
 	if (curr_type == LEX_EQ) {
 		GetL();
 		if (curr_type == LEX_CSTR) GetL();
+		else if (curr_type == LEX_TRUE || curr_type == LEX_FALSE) GetL();
 		else C0();
 	}
 }
@@ -419,6 +436,8 @@ void Parser::C0() { // Integer const
 }
 
 void Parser::S() {  // Struct
+	if (curr_type != LEX_ID) throw curr_lex;
+	GetL();
 	if (curr_type != LEX_OBRACE) throw curr_lex;
 	GetL();
 	D();
@@ -437,8 +456,10 @@ void Parser::O1() { // Operator
 	if (curr_type == LEX_IF) {
 		GetL();
 		if (curr_type != LEX_OBRACKET) throw curr_lex;
+		GetL();
 		E0();
 		if (curr_type != LEX_CBRACKET) throw curr_lex;
+		GetL();
 		O1();
 		if (curr_type == LEX_ELSE) {
 			GetL();
@@ -470,6 +491,8 @@ void Parser::O1() { // Operator
 		O1();
 	}
 	else if (curr_type == LEX_BREAK) {
+		GetL();
+		if (curr_type != LEX_SEMICOLON) throw curr_lex;
 		GetL();
 	}
 	else if (curr_type == LEX_GOTO) {
@@ -542,7 +565,7 @@ void Parser::E() {  // Expression
 }
 
 void Parser::E1() { // Term
-	if (curr_type == LEX_ID || curr_type == LEX_CSTR) GetL();
+	if (curr_type == LEX_ID || curr_type == LEX_CSTR || curr_type == LEX_TRUE || curr_type == LEX_FALSE) GetL();
 	else C0();
 }
 
