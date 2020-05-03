@@ -205,18 +205,19 @@ class Parser {
 	void P();  // Program 
 	void D();  // Descriptions
 	void D1(); // Description
-	void V();  // Variables
-	void V1(); // Variable
+	void V0(); // Next Variable 
+	void V1(); // Variable Initialization
 	void C0(); // Integer const
-	void S();  // Struct
 	void O();  // Operators
 	void O1(); // Operator
-	void E0(); // Boolean expression
+	void W();  // Write
+	void E0(); // Optional expression
 	void E();  // Expression
+	void E2(); // Next Term
 	void E1(); // Term
-	void A0(); // Boolean operations
+	void S1(); // Struct Point
 	void A();  // Operations
-	void O2(); // Compound operator
+	void I0(); // Optional "else"
 
 	//void Dec(type_of_lex type);
 	//void CheckID();
@@ -378,7 +379,7 @@ void Parser::Analyze() {
 	cout << endl << "Structure of program is correct \n" << endl;
 }
 
-void Parser::P() {
+void Parser::P() {  // Program
 	if (curr_type == LEX_PROGRAM) GetL();
 	else throw curr_lex;
 	if (curr_type == LEX_OBRACE) GetL();
@@ -401,52 +402,59 @@ void Parser::D() {  // Descriptions
 void Parser::D1() { // Description
 	if (curr_type == LEX_INT || curr_type == LEX_STRING || curr_type == LEX_BOOL) {
 		GetL();
-		V();
+		if (curr_type != LEX_ID) throw curr_lex;
+		GetL();
+		V1();
+		V0();
 	}
 	else if (curr_type == LEX_STRUCT) {
 		GetL();
-		S();
+		if (curr_type != LEX_ID) throw curr_lex;
+		GetL();
+		if (curr_type != LEX_OBRACE) throw curr_lex;
+		GetL();
+		D();
+		if (curr_type != LEX_CBRACE) throw curr_lex;
+		GetL();
 	}
-	else throw my_exception(ERR_STD, "Error.");
+	else throw my_exception(ERR_STD, "Description Error.");
 }
 
-void Parser::V() {  // Variables
-	V1();
+void Parser::V0() { // Next Variable
 	if (curr_type == LEX_COMMA) {
 		GetL();
-		V();
+		if (curr_type != LEX_ID) throw curr_lex;
+		GetL();
+		V1();
+		V0();
 	}
 }
 
-void Parser::V1() { // Variable
-	if (curr_type != LEX_ID) throw curr_lex;
-	GetL();
+void Parser::V1() { // Variable Initialization
 	if (curr_type == LEX_EQ) {
 		GetL();
-		if (curr_type == LEX_CSTR) GetL();
-		else if (curr_type == LEX_TRUE || curr_type == LEX_FALSE) GetL();
-		else C0();
+		E();
 	}
 }
 
 void Parser::C0() { // Integer const
-	if (curr_type == LEX_PLUS || curr_type == LEX_MINUS) GetL();
-	if (curr_type == LEX_NUM) GetL();
+	if (curr_type == LEX_PLUS || curr_type == LEX_MINUS) {
+		GetL();
+		if (curr_type == LEX_NUM) GetL();
+		else throw curr_lex;
+	}
+	else if (curr_type == LEX_NUM) GetL();
 	else throw curr_lex;
 }
 
-void Parser::S() {  // Struct
-	if (curr_type != LEX_ID) throw curr_lex;
-	GetL();
-	if (curr_type != LEX_OBRACE) throw curr_lex;
-	GetL();
-	D();
-	if (curr_type != LEX_CBRACE) throw curr_lex;
-	GetL();
-}
-
 void Parser::O() {  // Operators
-	if (curr_type != LEX_CBRACE) {
+	if (curr_type == LEX_IF || curr_type == LEX_FOR || curr_type == LEX_WHILE ||
+		curr_type == LEX_BREAK || curr_type == LEX_GOTO || curr_type == LEX_READ ||
+		curr_type == LEX_WRITE || curr_type == LEX_OBRACE || curr_type == LEX_OBRACKET ||
+		curr_type == LEX_ID || curr_type == LEX_PLUS || curr_type == LEX_MINUS ||
+		curr_type == LEX_NUM || curr_type == LEX_CSTR || curr_type == LEX_TRUE ||
+		curr_type == LEX_FALSE) {
+
 		O1();
 		O();
 	}
@@ -461,10 +469,11 @@ void Parser::O1() { // Operator
 		if (curr_type != LEX_CBRACKET) throw curr_lex;
 		GetL();
 		O1();
-		if (curr_type == LEX_ELSE) {
+		I0();
+		/*if (curr_type == LEX_ELSE) {
 			GetL();
 			O1();
-		}
+		}*/
 	}
 	else if (curr_type == LEX_FOR) {
 		GetL();
@@ -516,9 +525,14 @@ void Parser::O1() { // Operator
 		GetL();
 	}
 	else if (curr_type == LEX_OBRACE) {
-		O2();
+		GetL();
+		O();
+		if (curr_type != LEX_CBRACE) throw curr_lex;
+		GetL();
 	}
-	else if (curr_type == LEX_OBRACKET || curr_type == LEX_ID || curr_type == LEX_NUM || curr_type == LEX_CSTR) {
+	else if (curr_type == LEX_OBRACKET || curr_type == LEX_ID || curr_type == LEX_NUM ||
+		     curr_type == LEX_CSTR || curr_type == LEX_TRUE || curr_type == LEX_FALSE) {
+
 		E();
 		if (curr_type != LEX_SEMICOLON) throw curr_lex;
 		GetL();
@@ -526,18 +540,19 @@ void Parser::O1() { // Operator
 	else throw curr_lex;
 }
 
-void Parser::E0() { // Boolean expression
-	if (curr_type == LEX_NOT) {
+void Parser::W() { // Write 
+	if (curr_type == LEX_COMMA) {
 		GetL();
-		if (curr_type != LEX_ID) throw curr_lex;
-		GetL();
+		E();
 	}
-	if (curr_type != LEX_ID) throw curr_lex;
-	GetL();
-	if (curr_type != LEX_CBRACKET && curr_type != LEX_SEMICOLON) {
-		A0();
-		if (curr_type == LEX_ID) GetL();
-		else C0();
+}
+
+void Parser::E0() { // Optional expression
+	if (curr_type == LEX_OBRACKET || curr_type == LEX_ID || curr_type == LEX_NUM ||
+		curr_type == LEX_CSTR || curr_type == LEX_TRUE || curr_type == LEX_FALSE ||
+		curr_type == LEX_PLUS || curr_type == LEX_MINUS) {
+
+		E();
 	}
 }
 
@@ -545,48 +560,56 @@ void Parser::E() {  // Expression
 	if (curr_type == LEX_OBRACKET) {
 		GetL();
 		E1();
-		if (curr_type == LEX_CBRACKET);
-		else {
-			A();
-			E();
-		}
+		E2();
 		if (curr_type != LEX_CBRACKET) throw curr_lex;
 		GetL();
 	}
 	else {
 		E1();
-		if (curr_type != LEX_EQ && curr_type != LEX_PLUS && curr_type != LEX_MINUS && curr_type != LEX_STAR &&
-			curr_type != LEX_SLASH && curr_type != LEX_POINT);
-		else {
-			A();
-			E();
-		}
+		E2();
+	}
+}
+
+void Parser::E2() {  // Next Term
+	if (curr_type == LEX_LESS || curr_type == LEX_MORE || curr_type == LEX_LESSEQ || curr_type == LEX_MOREEQ ||
+		curr_type == LEX_EQEQ || curr_type == LEX_NEQ || curr_type == LEX_EQ || curr_type == LEX_PLUS ||
+		curr_type == LEX_MINUS || curr_type == LEX_STAR || curr_type == LEX_SLASH) {
+
+		A();
+		E();
 	}
 }
 
 void Parser::E1() { // Term
-	if (curr_type == LEX_ID || curr_type == LEX_CSTR || curr_type == LEX_TRUE || curr_type == LEX_FALSE) GetL();
+	if (curr_type == LEX_ID) {
+		GetL();
+		S1();
+	}
+	else if (curr_type == LEX_CSTR || curr_type == LEX_TRUE || curr_type == LEX_FALSE) GetL();
 	else C0();
 }
 
-void Parser::A0() { // Boolean operations
-	if (curr_type == LEX_LESS || curr_type == LEX_MORE || curr_type == LEX_LESSEQ || curr_type == LEX_MOREEQ ||
-		curr_type == LEX_EQEQ || curr_type == LEX_NEQ) GetL();
-	else throw curr_lex;
+void Parser::S1() {  // Struct Point
+	if (curr_type == LEX_POINT) {
+		GetL();
+		if (curr_type != LEX_ID) throw curr_lex;
+		GetL();
+		S1();
+	}
 }
 
 void Parser::A() {  // Operations
 	if (curr_type == LEX_EQ || curr_type == LEX_PLUS || curr_type == LEX_MINUS || curr_type == LEX_STAR ||
-		curr_type == LEX_SLASH || curr_type == LEX_POINT) GetL();
+		curr_type == LEX_SLASH || curr_type == LEX_LESS || curr_type == LEX_MORE || curr_type == LEX_LESSEQ || 
+		curr_type == LEX_MOREEQ || curr_type == LEX_EQEQ || curr_type == LEX_NEQ) GetL();
 	else throw curr_lex;
 }
 
-void Parser::O2() { // Compound operator
-	if (curr_type != LEX_OBRACE) throw curr_lex;
-	GetL();
-	O();
-	if (curr_type != LEX_CBRACE) throw curr_lex;
-	GetL();
+void Parser::I0() { // Optional "else"
+	if (curr_type == LEX_ELSE) {
+		GetL();
+		O1();
+	}
 }
 
 // ========================================================================== //

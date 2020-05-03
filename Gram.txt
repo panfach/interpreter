@@ -28,25 +28,25 @@ Version 2:
 Analyze -> P @
 P -> program { D O }
 D -> D1 ; D | eps
-D1 -> int lex_ident V1 V | string lex_ident V1 V | boolean lex_ident V1 V | struct S
-V -> , V1 V | eps          ////                                      
-V1 -> = E | eps            ////
-C0 -> lex_number | + lex_number | - lex_number       
-S -> { D }
+D1 -> int lex_ident V1 V0 | string lex_ident V1 V0 | boolean lex_ident V1 V0 | struct lex_ident { D }   ////  +
+V0 -> , lex_ident V1 V0 | eps          ////  +                                     
+V1 -> = E | eps                    ////  +
+C0 -> lex_number | + lex_number | - lex_number          //// Удаление S, O2, A0     --
 O -> O1 O | eps
-O1 -> if ( E0 ) O1 I0 |                        
-      for ( E ; E0 ; E ) O1 |
+O1 -> if ( E0 ) O1 I0 |               ////  +      
+      for ( E ; E0 ; E ) O1 |       
       while ( E0 ) O1 | 
       break ; |
       goto lex_ident ; |
       read ( lex_ident ) ; |
-      write ; |
-      O2 | E ;
-E0 -> E | eps
-E -> E1 E2 | ( E1 E2 )                                     
-E2 -> A E | eps
-E1 -> lex_ident S1 | C0 | lex_string | true | false
-S1 -> . lex_ident S1 | eps
-A -> = | + | - | * | / | < | > | <= | >= | == | !=
-O2 -> { O }
-I0 -> else O1 | else 
+      write ( E W ) ; |
+      { O } | E ;                 ////  +
+W -> , E | eps                    ////new  +
+E0 -> E | eps                     ////  +
+E -> E1 E2 | ( E1 E2 )            ////  +                                     
+E2 -> A E | eps                   ////new   + 
+E1 -> lex_ident S1 | C0 | lex_string | true | false     ////  +
+S1 -> . lex_ident S1 | eps               ////new   +
+A -> = | + | - | * | / | < | > | <= | >= | == | !=        ////  +
+I0 -> else O1 | eps                        ////new   -
+
