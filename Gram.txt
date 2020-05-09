@@ -1,4 +1,4 @@
-Analyze -> P @
+﻿Analyze -> P @
 P -> program { D O }
 D -> D1 ; D | eps
 D1 -> int V | string V | boolean V | struct S
@@ -26,27 +26,76 @@ O2 -> { O }
 Version 2:
 
 Analyze -> P @
-P -> program { D O }
+P -> program '{' D O '}'
 D -> D1 ; D | eps
-D1 -> int lex_ident V1 V | string lex_ident V1 V | boolean lex_ident V1 V | struct S
-V -> , V1 V | eps          ////                                      
-V1 -> = E | eps            ////
-C0 -> lex_number | + lex_number | - lex_number       
-S -> { D }
+D1 -> int lex_ident V1 V0 | string lex_ident V1 V0 | boolean lex_ident V1 V0 | struct lex_ident '{' D '}'   ////  +
+V0 -> , lex_ident V1 V0 | eps                           ////  +                                     
+V1 -> = E | eps                                         ////  +
+C0 -> lex_number | + lex_number | - lex_number          //// Удаление S, O2, A0     --
 O -> O1 O | eps
-O1 -> if ( E0 ) O1 I0 |                        
-      for ( E ; E0 ; E ) O1 |
+O1 -> if ( E0 ) O1 I0 |                                 ////  +      
+      for ( E ; E0 ; E ) O1 |       
       while ( E0 ) O1 | 
       break ; |
       goto lex_ident ; |
       read ( lex_ident ) ; |
-      write ; |
-      O2 | E ;
-E0 -> E | eps
-E -> E1 E2 | ( E1 E2 )                                     
-E2 -> A E | eps
-E1 -> lex_ident S1 | C0 | lex_string | true | false
+      write ( E W ) ; |                             //// -
+      '{' O '}' | E ;                               ////  +
+W -> , E | eps                                      ////new  +
+E0 -> E | eps                                       ////  +
+E -> E1 E2 | ( E1 E2 ) E2                           ////  +                                     
+E2 -> A E | eps                                     ////new   + 
+E1 -> lex_ident S1 | C0 | lex_string | true | false     ////  +
+S1 -> . lex_ident S1 | eps                              ////new   +
+A -> = | + | - | * | / | < | > | <= | >= | == | !=      ////  +
+I0 -> else O1 | eps                                     ////new   -
+
+
+
+Version 3:
+
+Analyze -> P @
+P -> program '{' D O '}'
+D -> D1 ; D | eps
+D1 -> [int|string|boolean] lex_ident V1 { , lex_ident V1 } | struct lex_ident '{' D '}'                                     
+V1 -> = E | eps                                       
+C0 -> lex_number | + lex_number | - lex_number           
+O -> O1 O | eps
+O1 -> if ( E0 ) O1 I0 [else O1] |                         
+      for ( E ; E0 ; E ) O1 |       
+      while ( E0 ) O1 | 
+      break ; |
+      goto lex_ident ; |
+      read ( lex_ident ) ; |
+      write ( E {, E} ) ; |                              
+      '{' O '}' | E ;                                    
+E0 -> E | eps                                           
+E -> E1 { = E1 }                                       
+E1 -> E2 { or E2 }                                  
+E2 -> E3 { and E3 }                                  
+E3 -> E4 { [<|>|<=|>=|==|!=] E4 }                      
+E4 -> E5 { [+|-] E5 }                                   
+E5 -> E6 { [*|/] E6 }                                   
+E6 -> lex_ident S1 | C0 | [true|false] | lex_string | not E6 | ( E )   
 S1 -> . lex_ident S1 | eps
-A -> = | + | - | * | / | < | > | <= | >= | == | !=
-O2 -> { O }
-I0 -> else O1 | else 
+
+
+
+
+
+
+
+Набор операций и их старшинство:
+not (логическое отрицание)
+* / (умножение и деление)
++ − (сложение и вычитание)
+< > <= >= == != (операции отношения)
+and (логическое умножение)
+or (логическое сложение)
+= (присваивание)
+
+
+A = a + b + c + d + e
+I = I + I; ???? + ???? 
+A = a + b + c + d + e
+
