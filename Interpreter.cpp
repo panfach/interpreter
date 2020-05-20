@@ -9,12 +9,12 @@ using namespace std;
 // ============================ ENUM & STRUCT ========================== //
 enum type_of_lex {
 	LEX_NULL,    // 0
-	LEX_BOOL,    // 1
-	LEX_INT,     // 2
-	LEX_STRING,  // 3
-	LEX_AND,     // 4
+	LEX_BOOL,    // 
+	LEX_INT,     // 
+	LEX_STRING,  // 
+	LEX_AND,     // 
 	LEX_OR,      // 5
-	LEX_BEGIN,   // 6
+	LEX_BEGIN,   // 
 	LEX_DO,      //
 	LEX_END,     //    
 	LEX_TRUE,    //
@@ -55,11 +55,12 @@ enum type_of_lex {
 	LEX_OBRACE,    //
 	LEX_CBRACE,    //
 	LEX_POINT,     // 45
+	LEX_UNMINUS,   //
 	LEX_QUOT,      //
 
 	LEX_NUM,       //                                                                            
 	LEX_ID,        //
-	LEX_CSTR,      //
+	LEX_CSTR,      // 50
 	POLIZ_LABEL,   //                                                                             
 	POLIZ_ADDRESS, //                                                                                
 	POLIZ_GO,      //                                                                                  
@@ -75,17 +76,19 @@ enum type_of_err {
 	ERR_LEX,
 	ERR_TWDEF,
 	ERR_UNDEF,
-	ERR_TYPE
+	ERR_TYPE,
+	ERR_NOTSTRUCT,
+	ERR_LABEL
 };
 
 struct my_exception {
 	type_of_err type;
 	string text;
 	int strC;
-	my_exception(type_of_err t, string str) {
+	my_exception(type_of_err t, string str, int _strC = 0) {
 		type = t;
 		text = str;
-		strC = 0;
+		strC = _strC;
 	}
 	my_exception(type_of_err t, char c = '0') {
 		type = t;
@@ -116,13 +119,13 @@ public:
 
 // =================================== IDENT =================================== //
 class Ident {
-
 	string name;
 	bool declare;
 	type_of_lex type;
 	bool assign;
 	int value;
 	int structValue;
+	int labelAdress;
 
 public:
 	Ident() { declare = false; type = LEX_NULL; assign = false; value = 0; }
@@ -135,21 +138,28 @@ public:
 	bool get_assign() { return assign; }
 	int get_value() { return value; }
 	int get_structValue() { return structValue; }
+	int get_labelAdress() { return labelAdress; }
 
 	void put_declare() { declare = true; }
 	void put_type(type_of_lex t) { type = t; }
 	void put_assign() { assign = true; }
 	void put_value(int v) { value = v; }
 	void put_structValue(int v) { structValue = v; }
+	void put_labelAdress(int v) { labelAdress = v; }
 };
 
-// ================================ TABLES ================================= //
-vector<string> TS;
-vector<Ident> TID;
-vector<Lex> TT;
-vector<vector<Ident>> TStruct;
 
-// =================================== SCANNER =================================== //
+
+// ================================ TABLES === // ========================== //
+vector<string> TS;                             // Table of Strings           //
+vector<Ident> TID;                             // Table of Identificators    //
+vector<Lex> TT;                                // Table of Lex               //
+vector<Ident> TL;                              // Table of Labels            //
+vector<string> TLN;                            // Table of Label Names       //
+vector<vector<Ident>> TStruct;                 // Table of Structures        //
+vector<Ident> TSN;                             // Table of Structure Names   //
+
+// ====================================== SCANNER ====================================== //
 class Scanner {
 	FILE* f;
 	char inpCh;
@@ -210,14 +220,15 @@ vector<string> Scanner::TD = { "null", ";", ",", ":", ":=", "(", ")", "=", "<", 
 〈оператор-выражение〉 → 〈выражение〉;
 */
 class Parser {
-	Lex curr_lex;
-	type_of_lex curr_type;
-	int curr_val, curr_str, curr_struct;
+	Lex curr_lex, lastIdent;
+	type_of_lex curr_type, var_type, res_type;
+	int curr_val, curr_str, curr_struct, loop_counter;
 	Scanner scanner;
 	stack<int>st_int;
 	stack<type_of_lex>st_lex;
+	stack<string>st_struct;
 
-	bool structDescrAvailable, structDescribing;
+	bool structDescrAvailable, structDescribing, descrSection/*!*/, firstIsVariable;
 
 	void P();  // Program 
 	void D();  // Descriptions
@@ -239,7 +250,10 @@ class Parser {
 	void Dec(type_of_lex type);
 	void CheckID();
 	void CheckOp();
-	//void CheckNot();
+	void CheckInit();
+	int CheckLabel();
+	void CheckTLN();
+	void CheckNot();
 	//void EqType();
 	//void EqBool();
 	//void CheckID_read();
@@ -255,7 +269,7 @@ class Parser {
 
 public:
 	vector<Lex> poliz;
-	Parser(const char* program) : scanner(program) { }
+	Parser(const char* program) : scanner(program), loop_counter(0) { }
 	void Analyze();
 };
 
@@ -298,6 +312,13 @@ int PutLex(const Lex& L) {
 	return TT.size() - 1;
 }
 
+int PutLabel(const string& buf) {
+	vector<Ident>::iterator it;
+	if ((it = find(TL.begin(), TL.end(), buf)) != TL.end()) return -1;
+	TL.push_back(Ident(buf));
+	return TL.size() - 1;
+}
+
 Lex Scanner::GetLex() {
 	enum state { H, IDENT, NUMB, COM, ALE, STR, NEQ };
 	state CS = H;
@@ -336,6 +357,11 @@ Lex Scanner::GetLex() {
 			break;
 		case IDENT:
 			if (isalpha(inpCh) || isdigit(inpCh)) { buf.push_back(inpCh); }
+			else if (inpCh == ':') {
+				if (j = look(buf, TW)) throw my_exception(ERR_STD, "Error. Incorrect name of label.");
+				if ((j = PutLabel(buf)) == -1) throw my_exception(ERR_STD, "Error. Names of labels must be different.\n");
+				return Lex(strCounter, POLIZ_LABEL, j);
+			}
 			else {
 				ungetc(inpCh, f);
 				if (j = look(buf, TW))
@@ -396,6 +422,8 @@ void Parser::Analyze() {
 	GetL();
 	P();
 	if (curr_type != LEX_FIN) throw my_exception(ERR_END);
+	if (!TLN.empty()) throw my_exception(ERR_LABEL, TLN[0]); // Проверка на несуществующие метки
+
 	for (Lex l : poliz) cout << l << endl;
 	cout << endl;
 }
@@ -413,6 +441,8 @@ void Parser::P() {  // Program
 }
 
 void Parser::D() {  // Descriptions
+	descrSection = true;
+
 	if (curr_type == LEX_INT || curr_type == LEX_STRING || curr_type == LEX_BOOL || curr_type == LEX_STRUCT) {
 		type_of_lex var_type = curr_type;
 		D1();
@@ -420,11 +450,13 @@ void Parser::D() {  // Descriptions
 		else throw curr_lex;
 		D();
 	}
+
+	descrSection = false;
 }
 
 void Parser::D1() { // Description
 	if (curr_type == LEX_INT || curr_type == LEX_STRING || curr_type == LEX_BOOL) {
-		type_of_lex var_type = curr_type;
+		var_type = curr_type;
 		structDescrAvailable = false;
 		GetL();
 		if (curr_type != LEX_ID) throw curr_lex;
@@ -453,7 +485,7 @@ void Parser::D1() { // Description
 		Dec(var_type);
 	}
 	else if (curr_type == LEX_STRUCT) {
-		type_of_lex var_type = curr_type;
+		var_type = curr_type;
 		if (structDescribing) throw my_exception(ERR_STD, "Error. Invalid type for structure field.\n");
 		if (!structDescrAvailable) throw my_exception(ERR_STD, "Error. Structure must be described before variables.\n");
 		curr_struct = -1;
@@ -491,6 +523,7 @@ void Parser::V1() { // Variable Initialization
 	if (curr_type == LEX_EQ) {
 		GetL();
 		E();
+		CheckInit();
 	}
 }
 
@@ -510,7 +543,7 @@ void Parser::O() {  // Operators
 		curr_type == LEX_WRITE || curr_type == LEX_OBRACE || curr_type == LEX_OBRACKET ||
 		curr_type == LEX_ID || curr_type == LEX_PLUS || curr_type == LEX_MINUS ||
 		curr_type == LEX_NUM || curr_type == LEX_CSTR || curr_type == LEX_TRUE ||
-		curr_type == LEX_FALSE) {
+		curr_type == LEX_FALSE || curr_type == POLIZ_LABEL) {
 
 		O1();
 		O();
@@ -518,11 +551,14 @@ void Parser::O() {  // Operators
 }
 
 void Parser::O1() { // Operator
+	type_of_lex type;
 	if (curr_type == LEX_IF) {
 		GetL();
 		if (curr_type != LEX_OBRACKET) throw curr_lex;
 		GetL();
 		E0();
+		from_st(st_lex, type);
+		if (type != LEX_BOOL) throw my_exception(ERR_STD, "Error. IF: Expression must be boolean.", curr_lex.get_str());
 		if (curr_type != LEX_CBRACKET) throw curr_lex;
 		GetL();
 		O1();
@@ -532,6 +568,7 @@ void Parser::O1() { // Operator
 		}
 	}
 	else if (curr_type == LEX_FOR) {
+		loop_counter++;
 		GetL();
 		if (curr_type != LEX_OBRACKET) throw curr_lex;
 		GetL();
@@ -539,23 +576,31 @@ void Parser::O1() { // Operator
 		if (curr_type != LEX_SEMICOLON) throw curr_lex;
 		GetL();
 		if (curr_type != LEX_SEMICOLON) E0();
+		from_st(st_lex, type);
+		if (type != LEX_BOOL) throw my_exception(ERR_STD, "Error. FOR: The second expression must be boolean.", curr_lex.get_str());
 		if (curr_type != LEX_SEMICOLON) throw curr_lex;
 		GetL();
 		if (curr_type != LEX_CBRACKET) E();
 		if (curr_type != LEX_CBRACKET) throw curr_lex;
 		GetL();
 		O1();
+		loop_counter--;
 	}
 	else if (curr_type == LEX_WHILE) {
+		loop_counter++;
 		GetL();
 		if (curr_type != LEX_OBRACKET) throw curr_lex;
 		GetL();
 		E0();
+		from_st(st_lex, type);
+		if (type != LEX_BOOL) throw my_exception(ERR_STD, "Error. WHILE: Expression must be boolean.", curr_lex.get_str());
 		if (curr_type != LEX_CBRACKET) throw curr_lex;
 		GetL();
 		O1();
+		loop_counter--;
 	}
 	else if (curr_type == LEX_BREAK) {
+		if (loop_counter == 0) throw my_exception(ERR_STD, "Error. break must be in the body of loop.\n", curr_lex.get_str());
 		GetL();
 		if (curr_type != LEX_SEMICOLON) throw curr_lex;
 		GetL();
@@ -563,6 +608,10 @@ void Parser::O1() { // Operator
 	else if (curr_type == LEX_GOTO) {
 		GetL();
 		if (curr_type != LEX_ID) throw curr_lex;
+		CheckLabel();
+		GetL();
+		if (curr_type != LEX_SEMICOLON) throw curr_lex;
+		GetL();
 	}
 	else if (curr_type == LEX_READ) {
 		GetL();
@@ -597,10 +646,15 @@ void Parser::O1() { // Operator
 	}
 	else if (curr_type == LEX_OBRACKET || curr_type == LEX_ID || curr_type == LEX_NUM ||
 		     curr_type == LEX_CSTR || curr_type == LEX_TRUE || curr_type == LEX_FALSE) {
-
+		firstIsVariable = true;
 		E();
 		if (curr_type != LEX_SEMICOLON) throw curr_lex;
 		GetL();
+	}
+	else if (curr_type == POLIZ_LABEL) {
+		CheckTLN();
+		GetL();
+		if (curr_type == POLIZ_LABEL) throw my_exception(ERR_STD, "Error. Two labels in a row.\n", curr_lex.get_str());
 	}
 	else throw curr_lex;
 }
@@ -608,7 +662,7 @@ void Parser::O1() { // Operator
 void Parser::E0() { // Optional expression
 	if (curr_type == LEX_OBRACKET || curr_type == LEX_ID || curr_type == LEX_NUM ||
 		curr_type == LEX_CSTR || curr_type == LEX_TRUE || curr_type == LEX_FALSE ||
-		curr_type == LEX_PLUS || curr_type == LEX_MINUS) {
+		curr_type == LEX_PLUS || curr_type == LEX_MINUS || curr_type == LEX_NOT) {
 
 		E();
 	}
@@ -616,13 +670,16 @@ void Parser::E0() { // Optional expression
 
 void Parser::E() {  // Expression EQ
 	E1();
+	firstIsVariable = false;
 	curr_str = curr_lex.get_str();
-	while (curr_type == LEX_EQ) {
+	if (curr_type == LEX_EQ) {
 		st_lex.push(curr_type);
 		GetL();
 		E1();
 		CheckOp();
 	}
+
+
 }
 
 void Parser::E1() { // Expression OR
@@ -679,9 +736,11 @@ void Parser::E5() {  // Expression MULTDIV
 void Parser::E6() {  // Expression BRACKETS
 	if (curr_type == LEX_ID) {
 		CheckID();
+		lastIdent = curr_lex;
 		GetL();
 		S1();
 	}
+	else if (firstIsVariable) throw my_exception(ERR_STD, "Error. Left operand must be variable.\n", curr_str);
 	else if (curr_type == LEX_TRUE || curr_type == LEX_FALSE) {
 		GetL();
 		st_lex.push(LEX_BOOL);
@@ -693,7 +752,7 @@ void Parser::E6() {  // Expression BRACKETS
 	else if (curr_type == LEX_NOT) {
 		GetL();
 		E6();
-		//CheckNot();
+		CheckNot();
 	}
 	else if (curr_type == LEX_OBRACKET) {
 		GetL();
@@ -701,19 +760,66 @@ void Parser::E6() {  // Expression BRACKETS
 		if (curr_type != LEX_CBRACKET) throw curr_lex;
 		GetL();
 	}
+	else if (curr_type == LEX_NUM) {
+		GetL();
+		st_lex.push(LEX_INT);
+	}
+	else if (curr_type == LEX_MINUS) {
+		GetL();
+		if (curr_type == LEX_NUM) {
+			GetL();
+			st_lex.push(LEX_INT);
+		}
+		else if (curr_type == LEX_ID) {
+			CheckID();
+			lastIdent = curr_lex;
+			GetL();
+			S1();
+		}
+		else if (curr_type == LEX_OBRACKET) {
+			GetL();
+			E();
+			if (curr_type != LEX_CBRACKET) throw curr_lex;
+			GetL();
+		}
+	}
+	else throw curr_lex;
+
+	/*
 	else {
 		C0();
 		st_lex.push(LEX_INT);
 	}
+	void Parser::C0() { // Integer const
+		if (curr_type == LEX_PLUS || curr_type == LEX_MINUS) {
+			GetL();
+			if (curr_type == LEX_NUM) GetL();
+			else throw curr_lex;
+		}
+		else if (curr_type == LEX_NUM) GetL();
+		else throw curr_lex;
+	}*/
 }
 
 void Parser::S1() {  // Struct Point
-	if (curr_type == LEX_POINT) {              ////////////////// теперь нужно засунуть в стек st_lex тип переменной в структуре
+	if (curr_type == LEX_POINT) {
+		// Проверка на то, ялвяется ли переменная перед LEX_POINT структурой
+		if (TID[lastIdent.get_value()].get_type() != LEX_STRUCT) throw my_exception(ERR_NOTSTRUCT, TID[lastIdent.get_value()].get_name());
+
 		GetL();
 		if (curr_type != LEX_ID) throw curr_lex;
+
+		// Проверка на то, есть ли такое поле в структуре
+		vector<Ident>::iterator it;
+		int structIndex = TID[lastIdent.get_value()].get_structValue();
+		if ((it = find(TStruct[structIndex].begin(), TStruct[structIndex].end(), TID[curr_val].get_name())) == TStruct[structIndex].end())
+			throw my_exception(ERR_STD, "Error. Incorrect field of a structure.\n");
+
+		st_lex.push(it->get_type()); // Если вызывать просто CheckID, будут проблемы
 		GetL();
 		S1();
 	}
+	else if (lastIdent.get_type() == LEX_STRUCT) st_struct.push(TID[lastIdent.get_value()].get_name());
 }
 
 void Parser::Dec(type_of_lex type) {
@@ -755,13 +861,19 @@ void Parser::CheckOp() {
 	if (op == LEX_EQ) {
 		t = t1;
 		r = t1;
+		if (t1 == LEX_STRUCT) {
+			string s1, s2;
+			from_st(st_struct, s1);
+			from_st(st_struct, s2);
+			if (s1 != s2) throw my_exception(ERR_STD, "Error. Equating of different structures.\n", curr_str);
+		}
 	}
 	if (op == LEX_PLUS || op == LEX_MINUS || op == LEX_STAR || op == LEX_SLASH) {
 		if (t1 == LEX_INT) {
 			t = LEX_INT; r = LEX_INT;
 		}
-		else if (t1 == LEX_STRING) {
-			t = LEX_INT;
+		else if (t1 == LEX_STRING && op == LEX_PLUS) {
+			t = LEX_STRING;
 			r = LEX_STRING;
 		}
 		else throw my_exception(ERR_TYPE, curr_str);
@@ -783,6 +895,34 @@ void Parser::CheckOp() {
 	//poliz.push_back(Lex(op));
 }
 
+void Parser::CheckInit() {
+	type_of_lex type;
+	from_st(st_lex, type);
+	if (type != var_type) throw my_exception(ERR_STD, "Error. Incorrect type of initializating constant.\n");
+}
+
+int Parser::CheckLabel() {
+	vector<Ident>::iterator it = TL.begin();
+	while (1) {
+		if (it == TL.end()) {
+			TLN.push_back(TID[curr_val].get_name()); 
+			return 0;
+		}
+		if (it->get_name() == TID[curr_val].get_name()) return 1;
+		it++;
+	}
+}
+
+void Parser::CheckTLN() {
+	vector<string>::iterator it;
+	if ((it = find(TLN.begin(), TLN.end(), TL[curr_val].get_name())) != TLN.end()) TLN.erase(it);
+}
+
+void Parser::CheckNot() {
+	if (st_lex.top() != LEX_BOOL) throw my_exception(ERR_TYPE, curr_str);
+	// poliz.push_back(Lex(LEX_NOT)); //////////////////////////////////////////////////////////////////////////
+}
+
 unsigned int Parser::PutStruct() {
 	vector<Ident> field;
 	TStruct.push_back(field);
@@ -798,26 +938,6 @@ unsigned int Parser::PutStructField(int index, Ident& id) {
 	return TStruct[index].size() - 1;
 }
 
-/*
-int PutIdent(const string& buf) {
-	vector<Ident>::iterator it;
-	if ((it = find(TID.begin(), TID.end(), buf)) != TID.end())
-		return it - TID.begin();
-	TID.push_back(Ident(buf));
-	return TID.size() - 1;
-}
-
-int PutString(const string& buf) {
-	TS.push_back(buf);
-	return TS.size() - 1;
-}
-
-int PutLex(const Lex& L) {
-	TT.push_back(L);
-	return TT.size() - 1;
-}
-*/
-
 template<class T, class T_EL> 
 void Parser::from_st(T& t, T_EL& x) {
 	x = t.top();
@@ -826,6 +946,7 @@ void Parser::from_st(T& t, T_EL& x) {
 
 // ========================================================================== //
 void PrintError(my_exception& exc) {
+	cout << endl << exc.strC << ": ";
 	switch (exc.type) {
 	case ERR_STD:
 		cout << exc.text << "\n";
@@ -843,13 +964,19 @@ void PrintError(my_exception& exc) {
 		cout << "Error. There isn't end symbol.\n";
 		break;
 	case ERR_TWDEF:
-		cout << "Error. Variable " << exc.text << " is defined twice\n";
+		cout << "Error. Variable " << exc.text << " is defined twice.\n";
 		break;
 	case ERR_UNDEF:
-		cout << "Error. Variable " << exc.text << " is not defined\n";
+		cout << "Error. Variable " << exc.text << " is not defined.\n";
 		break;
 	case ERR_TYPE:
 		cout << "Error. " << exc.strC << ": Invalid types.\n";
+		break;
+	case ERR_NOTSTRUCT:
+		cout << "Error. Variable " << exc.text << " is not a structure.\n";
+		break;
+	case ERR_LABEL:
+		cout << "Error. Label " << exc.text << " has not found.\n";
 	}
 	cout << "\n// ================= ERROR!!! ================ //\n";
 }
@@ -895,7 +1022,7 @@ void PrintStruct() {
 	cout << "Structs: \n";
 	while (it != TStruct.end()) {
 		cout << i + 1 << ":\n";
-		for (int j = 0; j < TStruct[i].size(); j++) {
+		for (unsigned int j = 0; j < TStruct[i].size(); j++) {
 			cout << "   " << TStruct[i][j].get_name() << endl;
 		}
 		it++;
@@ -922,7 +1049,7 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 	catch (Lex l) {
-		cout << "Error. Invalid token: " << l << endl;
+		cout << "Error. Invalid token:\n" << l << endl;
 		return 1;
 	}
 
